@@ -1,75 +1,162 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import "./App.css";
 
 function App() {
+  const socketRef = useRef(null);
 
+  const [connected, setConnected] = useState(false);
   const [angle, setAngle] = useState(0);
   const [distance, setDistance] = useState(0);
-  const [status, setStatus] = useState("Connecting...");
 
   useEffect(() => {
-
     const socket = new WebSocket("ws://localhost:5000");
 
+    socketRef.current = socket;
+
     socket.onopen = () => {
-      setStatus("Connected");
+      setConnected(true);
     };
 
     socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
 
-      const data = JSON.parse(event.data);
-
-      setAngle(data.angle);
-      setDistance(data.distance);
+        setAngle(data.angle);
+        setDistance(data.distance);
+      } catch (error) {
+        console.log("Invalid data:", event.data);
+      }
     };
 
     socket.onclose = () => {
-      setStatus("Disconnected");
+      setConnected(false);
     };
 
     return () => {
       socket.close();
     };
-
   }, []);
 
-
   function sendCommand(command) {
-
-    const socket = new WebSocket("ws://localhost:5000");
-
-    socket.onopen = () => {
-      socket.send(command);
-      socket.close();
-    };
+    if (
+      socketRef.current &&
+      socketRef.current.readyState === WebSocket.OPEN
+    ) {
+      socketRef.current.send(command);
+    }
   }
 
+  const maxDistance = 200;
+
+  const radius = Math.min(distance / maxDistance, 1) * 45;
+
+  const angleRad = (angle * Math.PI) / 180;
+
+  const x = 50 + radius * Math.cos(angleRad);
+  const y = 50 - radius * Math.sin(angleRad);
 
   return (
-    <div>
+    <div className="app">
 
-      <h1>Radar System</h1>
+      <header className="header">
+        <h1>RADAR SYSTEM</h1>
+        <p>Gesture Controlled IoT Dashboard</p>
+      </header>
 
-      <h3>Status: {status}</h3>
+      <main className="dashboard">
 
-      <h2>Angle: {angle}°</h2>
+        <section className="radar-card">
+          <h2>Live Radar</h2>
 
-      <h2>Distance: {distance} cm</h2>
+          <div className="radar">
 
-      <button onClick={() => sendCommand("START")}>
-        START
-      </button>
+            <div className="circle circle-1"></div>
+            <div className="circle circle-2"></div>
+            <div className="circle circle-3"></div>
 
-      <button onClick={() => sendCommand("STOP")}>
-        STOP
-      </button>
+            <div className="line horizontal"></div>
+            <div className="line vertical"></div>
 
-      <button onClick={() => sendCommand("SET_ANGLE:90")}>
-        90°
-      </button>
+            <div
+              className="sweep"
+              style={{
+                transform: `rotate(${angle}deg)`
+              }}
+            ></div>
 
-      <button onClick={() => sendCommand("SET_ANGLE:180")}>
-        180°
-      </button>
+            {distance > 0 && (
+              <div
+                className="object-point"
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`
+                }}
+              ></div>
+            )}
+
+            <div className="radar-center"></div>
+
+          </div>
+        </section>
+
+        <section className="info-card">
+
+          <div className="info-box">
+            <span>Connection</span>
+            <strong>
+              {connected ? "ONLINE" : "OFFLINE"}
+            </strong>
+          </div>
+
+          <div className="info-box">
+            <span>Angle</span>
+            <strong>{angle}°</strong>
+          </div>
+
+          <div className="info-box">
+            <span>Distance</span>
+            <strong>{distance.toFixed(1)} cm</strong>
+          </div>
+
+          <div className="info-box">
+            <span>Mode</span>
+            <strong>LIVE</strong>
+          </div>
+
+        </section>
+
+        <section className="controls">
+
+          <button
+            className="start"
+            onClick={() => sendCommand("START")}
+          >
+            START
+          </button>
+
+          <button
+            className="stop"
+            onClick={() => sendCommand("STOP")}
+          >
+            STOP
+          </button>
+
+          <button
+            onClick={() => sendCommand("AUTO")}
+          >
+            AUTO
+          </button>
+
+          <button
+            className="emergency"
+            onClick={() => sendCommand("EMERGENCY_STOP")}
+          >
+            EMERGENCY STOP
+          </button>
+
+        </section>
+
+      </main>
 
     </div>
   );
