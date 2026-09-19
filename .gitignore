@@ -1,4 +1,15 @@
+# Dependencies
 node_modules/
+gesture/venv/
+
+# Environment variables
 .env
+**/.env
+
+# Build files
 dist/
 build/
+
+# Python cache
+__pycache__/
+*.pyc

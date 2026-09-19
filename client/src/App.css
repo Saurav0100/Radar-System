@@ -219,3 +219,37 @@ button:hover {
 .sweep {
   transition: transform 0.05s linear;
 }
+
+.history {
+  background: #111820;
+  border: 1px solid #26313c;
+  border-radius: 16px;
+  padding: 25px;
+}
+
+.history h2 {
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.history table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history th,
+.history td {
+  padding: 10px;
+  text-align: center;
+  border-bottom: 1px solid #26313c;
+}
+
+.object-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: red;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 12px red;
+}
