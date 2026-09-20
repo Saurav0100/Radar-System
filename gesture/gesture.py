@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import websocket
+import time
 from pathlib import Path
 
 
@@ -18,19 +19,9 @@ MODEL_PATH = str(
 # ==========================
 
 BaseOptions = mp.tasks.BaseOptions
-
-GestureRecognizer = (
-    mp.tasks.vision.GestureRecognizer
-)
-
-GestureRecognizerOptions = (
-    mp.tasks.vision.GestureRecognizerOptions
-)
-
-VisionRunningMode = (
-    mp.tasks.vision.RunningMode
-)
-
+GestureRecognizer = mp.tasks.vision.GestureRecognizer
+GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
 
 options = GestureRecognizerOptions(
     base_options=BaseOptions(
@@ -39,9 +30,7 @@ options = GestureRecognizerOptions(
     running_mode=VisionRunningMode.IMAGE
 )
 
-recognizer = (
-    GestureRecognizer.create_from_options(options)
-)
+recognizer = GestureRecognizer.create_from_options(options)
 
 
 # ==========================
@@ -56,7 +45,7 @@ print("Connected to Node.js")
 
 
 # ==========================
-# Gesture → Command
+# Gesture Commands
 # ==========================
 
 commands = {
@@ -69,12 +58,24 @@ commands = {
 
 
 # ==========================
+# Reliability Settings
+# ==========================
+
+CONFIDENCE_THRESHOLD = 0.50
+REQUIRED_FRAMES = 5
+COOLDOWN = 1.5
+
+candidate_gesture = None
+gesture_count = 0
+last_sent_gesture = None
+last_command_time = 0
+
+
+# ==========================
 # Camera
 # ==========================
 
 camera = cv2.VideoCapture(0)
-
-last_gesture = None
 
 
 while True:
@@ -102,6 +103,10 @@ while True:
     confidence = 0.0
 
 
+    # ==========================
+    # Detect Gesture
+    # ==========================
+
     if result.gestures:
 
         gesture = result.gestures[0][0]
@@ -110,29 +115,72 @@ while True:
         confidence = gesture.score
 
 
-        # Send only when gesture changes
-        if (
-            gesture_name != last_gesture
-            and gesture_name in commands
-        ):
+    # ==========================
+    # Confidence Check
+    # ==========================
 
-            command = commands[gesture_name]
+    if (
+        gesture_name in commands
+        and confidence >= CONFIDENCE_THRESHOLD
+    ):
 
-            ws.send(command)
+        # Same gesture continues
+        if gesture_name == candidate_gesture:
 
-            print(
-                f"Gesture: {gesture_name}"
-            )
+            gesture_count += 1
 
-            print(
-                f"Command: {command}"
-            )
+        else:
 
-            last_gesture = gesture_name
+            candidate_gesture = gesture_name
+            gesture_count = 1
+
+
+        # ==========================
+        # Stable Gesture Check
+        # ==========================
+
+        if gesture_count >= REQUIRED_FRAMES:
+
+            current_time = time.time()
+
+            # Cooldown check
+            if (
+                current_time - last_command_time
+                >= COOLDOWN
+            ):
+
+                # Don't repeat same command
+                if gesture_name != last_sent_gesture:
+
+                    command = commands[gesture_name]
+
+                    ws.send(command)
+
+                    print(
+                        f"Gesture: {gesture_name}"
+                    )
+
+                    print(
+                        f"Confidence: {confidence:.2f}"
+                    )
+
+                    print(
+                        f"Command: {command}"
+                    )
+
+                    last_sent_gesture = gesture_name
+                    last_command_time = current_time
+
+    else:
+
+        # Reset when gesture is not reliable
+        candidate_gesture = None
+        gesture_count = 0
+        last_sent_gesture = None
 
 
     # ==========================
-    # Show on camera
+    # Display
     # ==========================
 
     cv2.putText(
@@ -140,15 +188,17 @@ while True:
         f"Gesture: {gesture_name}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.9,
         (0, 255, 0),
         2
     )
 
+    confidence_percent = confidence * 100
+
     cv2.putText(
         frame,
-        f"Confidence: {confidence:.2f}",
-        (20, 80),
+        f"Confidence: {confidence_percent:.1f}%",
+        (20, 75),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
         (0, 255, 0),
@@ -166,9 +216,6 @@ while True:
 
 
 camera.release()
-
 ws.close()
-
 recognizer.close()
-
 cv2.destroyAllWindows()
