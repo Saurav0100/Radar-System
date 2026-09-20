@@ -8,21 +8,14 @@ function App() {
   const [angle, setAngle] = useState(0);
   const [distance, setDistance] = useState(0);
   const [detections, setDetections] = useState([]);
+  const [lastUpdate, setLastUpdate] = useState("--");
 
-  const [totalDetections, setTotalDetections] = useState(0);
-  const [averageDistance, setAverageDistance] = useState(0);
+  const alertDistance = 30;
 
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:5000");
 
     socketRef.current = socket;
-
-    fetch("http://localhost:5000/api/stats")
-      .then((res) => res.json())
-      .then((data) => {
-        setTotalDetections(data.totalDetections);
-        setAverageDistance(data.averageDistance);
-      });
 
     socket.onopen = () => {
       setConnected(true);
@@ -34,10 +27,20 @@ function App() {
 
         setAngle(data.angle);
         setDistance(data.distance);
+        setLastUpdate(new Date().toLocaleTimeString());
 
-        setTotalDetections((prev) => prev + 1);
+        if (data.distance > 0 && data.distance <= 200) {
+          setDetections((prev) => [
+            {
+              angle: data.angle,
+              distance: data.distance,
+              time: new Date().toLocaleTimeString(),
+            },
+            ...prev,
+          ].slice(0, 20));
+        }
       } catch {
-        console.log("Invalid data:", event.data);
+        console.log("Invalid radar data");
       }
     };
 
@@ -45,145 +48,402 @@ function App() {
       setConnected(false);
     };
 
-    return () => socket.close();
+    return () => {
+      socket.close();
+    };
   }, []);
 
   function sendCommand(command) {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+    if (
+      socketRef.current &&
+      socketRef.current.readyState === WebSocket.OPEN
+    ) {
       socketRef.current.send(command);
     }
   }
 
-  const radius = Math.min(distance / 200, 1) * 45;
+  const alertActive =
+    distance > 0 && distance <= alertDistance;
 
-  const angleRad = (angle * Math.PI) / 180;
+  const scanStatus =
+    connected ? "ACTIVE" : "OFFLINE";
 
-  const x = 50 + radius * Math.cos(angleRad);
+  const maxDistance = 200;
+  const radarRadius = 240;
 
-  const y = 50 - radius * Math.sin(angleRad);
+  function getPoint(item) {
+    const r =
+      Math.min(item.distance / maxDistance, 1) *
+      radarRadius;
 
-  const minimumDistance =
-    detections.length > 0
-      ? Math.min(...detections.map((item) => item.distance))
-      : 0;
+    const radians =
+      (item.angle * Math.PI) / 180;
+
+    return {
+      x: 300 + r * Math.cos(radians),
+      y: 280 - r * Math.sin(radians),
+    };
+  }
+
+  const currentPoint = getPoint({
+    angle,
+    distance,
+  });
 
   return (
     <div className="app">
+
+      {/* HEADER */}
+
       <header className="header">
-        <h1>RADAR SYSTEM</h1>
-        <p>Gesture Controlled IoT Monitoring</p>
+
+        <div>
+          <h1>RADAR SYSTEM</h1>
+          <p>Gesture Controlled IoT Monitoring</p>
+        </div>
+
+        <div
+          className={`system-status ${
+            connected ? "online" : "offline"
+          }`}
+        >
+          <span className="status-dot"></span>
+          {connected ? "SYSTEM ONLINE" : "SYSTEM OFFLINE"}
+        </div>
+
       </header>
 
+
       <main className="dashboard">
-        <section className="radar-card">
-          <h2>Live Radar</h2>
 
-          <div className="radar">
-            <div className="circle circle-1"></div>
-            <div className="circle circle-2"></div>
-            <div className="circle circle-3"></div>
+        {/* ALERT */}
 
-            <div className="line horizontal"></div>
-            <div className="line vertical"></div>
+        <section
+          className={`alert-banner ${
+            alertActive ? "alert-active" : ""
+          }`}
+        >
 
-            <div
-              className="sweep"
-              style={{
-                transform: `rotate(${angle}deg)`,
-              }}
-            ></div>
+          <span>
+            {alertActive
+              ? "OBJECT DETECTED"
+              : "SYSTEM CLEAR"}
+          </span>
 
-            {distance > 0 && distance <= 200 && (
-              <div
-                className="object-point"
-                style={{
-                  left: `${x}%`,
-                  top: `${y}%`,
-                }}
-              ></div>
-            )}
+          <strong>
+            {alertActive
+              ? `${distance.toFixed(1)} cm`
+              : "No close object detected"}
+          </strong>
 
-            <div className="radar-center"></div>
-          </div>
         </section>
 
-        <section className="info-card">
-          <div className="info-box">
-            <span>Connection</span>
-            <strong>{connected ? "ONLINE" : "OFFLINE"}</strong>
+
+        {/* RADAR */}
+
+        <section className="radar-card">
+
+          <div className="section-title">
+
+            <div>
+              <h2>Live Radar</h2>
+              <p>Detection range: 200 cm</p>
+            </div>
+
+            <div className="scan-status">
+              SCAN: {scanStatus}
+            </div>
+
           </div>
 
-          <div className="info-box">
-            <span>Angle</span>
+
+          <div className="radar-container">
+
+            <svg
+              viewBox="0 0 600 320"
+              className="radar-svg"
+            >
+
+              {/* Rings */}
+
+              <path
+                d="M 60 280 A 240 240 0 0 1 540 280"
+                className="radar-ring"
+              />
+
+              <path
+                d="M 180 280 A 120 120 0 0 1 420 280"
+                className="radar-ring"
+              />
+
+              <path
+                d="M 240 280 A 60 60 0 0 1 360 280"
+                className="radar-ring"
+              />
+
+
+              {/* Base */}
+
+              <line
+                x1="60"
+                y1="280"
+                x2="540"
+                y2="280"
+                className="radar-line"
+              />
+
+
+              {/* Angle lines */}
+
+              <line
+                x1="300"
+                y1="280"
+                x2="60"
+                y2="280"
+                className="radar-line"
+              />
+
+              <line
+                x1="300"
+                y1="280"
+                x2="180"
+                y2="72"
+                className="radar-line"
+              />
+
+              <line
+                x1="300"
+                y1="280"
+                x2="300"
+                y2="40"
+                className="radar-line"
+              />
+
+              <line
+                x1="300"
+                y1="280"
+                x2="420"
+                y2="72"
+                className="radar-line"
+              />
+
+              <line
+                x1="300"
+                y1="280"
+                x2="540"
+                y2="280"
+                className="radar-line"
+              />
+
+
+              {/* Detection trail */}
+
+              {detections.map((item, index) => {
+                const point = getPoint(item);
+
+                return (
+                  <circle
+                    key={index}
+                    cx={point.x}
+                    cy={point.y}
+                    r="4"
+                    className="trail-point"
+                    opacity={1 - index / 20}
+                  />
+                );
+              })}
+
+
+              {/* Current object */}
+
+              {distance > 0 &&
+                distance <= maxDistance && (
+                  <circle
+                    cx={currentPoint.x}
+                    cy={currentPoint.y}
+                    r={alertActive ? 9 : 7}
+                    className={
+                      alertActive
+                        ? "danger-object"
+                        : "current-object"
+                    }
+                  />
+                )}
+
+
+              {/* Center */}
+
+              <circle
+                cx="300"
+                cy="280"
+                r="7"
+                className="radar-center"
+              />
+
+            </svg>
+
+
+            {/* Sweep */}
+
+            <div
+              className="radar-sweep"
+              style={{
+                transform: `rotate(${
+                  -90 + angle
+                }deg)`,
+              }}
+            />
+
+          </div>
+
+
+          <div className="radar-scale">
+            <span>0°</span>
+            <span>90°</span>
+            <span>180°</span>
+          </div>
+
+        </section>
+
+
+        {/* STATUS CARDS */}
+
+        <section className="stats-grid">
+
+          <div className="stat-card">
+            <span>CURRENT ANGLE</span>
             <strong>{angle}°</strong>
           </div>
 
-          <div className="info-box">
-            <span>Distance</span>
-            <strong>{distance.toFixed(1)} cm</strong>
-          </div>
-
-          <div className="info-box">
-            <span>Nearest</span>
+          <div className="stat-card">
+            <span>CURRENT DISTANCE</span>
             <strong>
-              {minimumDistance ? `${minimumDistance.toFixed(1)} cm` : "--"}
+              {distance.toFixed(1)} cm
             </strong>
           </div>
 
-          <div className="info-box">
-            <span>Total Detections</span>
-            <strong>{totalDetections}</strong>
+          <div className="stat-card">
+            <span>DETECTIONS</span>
+            <strong>
+              {detections.length}
+            </strong>
           </div>
 
-          <div className="info-box">
-            <span>Average Distance</span>
-            <strong>{averageDistance.toFixed(1)} cm</strong>
+          <div className="stat-card">
+            <span>LAST UPDATE</span>
+            <strong className="small-value">
+              {lastUpdate}
+            </strong>
           </div>
+
         </section>
 
-        <section className="controls">
-          <button className="start" onClick={() => sendCommand("START")}>
-            START
-          </button>
 
-          <button className="stop" onClick={() => sendCommand("STOP")}>
-            STOP
-          </button>
+        {/* CONTROLS */}
 
-          <button onClick={() => sendCommand("AUTO")}>AUTO</button>
+        <section className="controls-card">
 
-          <button
-            className="emergency"
-            onClick={() => sendCommand("EMERGENCY_STOP")}
-          >
-            EMERGENCY STOP
-          </button>
+          <h2>System Controls</h2>
+
+          <div className="controls">
+
+            <button
+              onClick={() => sendCommand("START")}
+            >
+              START
+            </button>
+
+            <button
+              onClick={() => sendCommand("STOP")}
+              className="stop-button"
+            >
+              STOP
+            </button>
+
+            <button
+              onClick={() => sendCommand("AUTO")}
+            >
+              AUTO
+            </button>
+
+            <button
+              onClick={() =>
+                sendCommand("EMERGENCY_STOP")
+              }
+              className="emergency"
+            >
+              EMERGENCY STOP
+            </button>
+
+          </div>
+
         </section>
 
-        <section className="history">
-          <h2>Recent Detections</h2>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Angle</th>
-                <th>Distance</th>
-              </tr>
-            </thead>
+        {/* RECENT DETECTIONS */}
 
-            <tbody>
-              {detections.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.time}</td>
-                  <td>{item.angle}°</td>
-                  <td>{item.distance.toFixed(1)} cm</td>
+        <section className="history-card">
+
+          <div className="section-title">
+            <div>
+              <h2>Recent Detections</h2>
+              <p>Latest radar readings</p>
+            </div>
+          </div>
+
+          <div className="table-wrapper">
+
+            <table>
+
+              <thead>
+                <tr>
+                  <th>TIME</th>
+                  <th>ANGLE</th>
+                  <th>DISTANCE</th>
+                  <th>STATUS</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+
+                {detections.map((item, index) => (
+                  <tr key={index}>
+
+                    <td>{item.time}</td>
+
+                    <td>{item.angle}°</td>
+
+                    <td>
+                      {item.distance.toFixed(1)} cm
+                    </td>
+
+                    <td>
+                      <span
+                        className={
+                          item.distance <= alertDistance
+                            ? "danger-text"
+                            : "safe-text"
+                        }
+                      >
+                        {item.distance <= alertDistance
+                          ? "ALERT"
+                          : "CLEAR"}
+                      </span>
+                    </td>
+
+                  </tr>
+                ))}
+
+              </tbody>
+
+            </table>
+
+          </div>
+
         </section>
+
       </main>
+
     </div>
   );
 }
